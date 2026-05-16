@@ -1,0 +1,54 @@
+{
+  "entities": {
+    "DispatchJob": {
+      "title": "Dispatch Job",
+      "description": "A delivery request on campus",
+      "type": "object",
+      "properties": {
+        "pickup_location": {
+          "type": "string",
+          "description": "Where the item is to be picked up"
+        },
+        "delivery_destination": {
+          "type": "string",
+          "description": "Where the item is to be delivered"
+        },
+        "item_description": {
+          "type": "string",
+          "description": "Description of the item to be delivered"
+        },
+        "offered_incentive_ngn": {
+          "type": "number",
+          "description": "The amount in Naira offered for the delivery"
+        },
+        "estimated_urgency": {
+          "type": "string",
+          "enum": ["HIGH", "MEDIUM", "LOW"],
+          "description": "How urgent the delivery is"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "ASSIGNED"],
+          "description": "The current state of the job"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the job was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the job was last updated"
+        }
+      },
+      "required": ["pickup_location", "delivery_destination", "item_description", "offered_incentive_ngn", "estimated_urgency", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "dispatch_jobs/{jobId}": {
+      "schema": "DispatchJob",
+      "description": "Collection of available and assigned delivery jobs"
+    }
+  }
+}

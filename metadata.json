@@ -1,0 +1,8 @@
+{
+  "name": "dispatchIQ",
+  "description": "Campus peer-to-peer delivery dispatch application with Gemini-powered NLP parsing and real-time job synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

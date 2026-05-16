@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Dispatch Jobs collection
+    match /dispatch_jobs/{jobId} {
+      // Publicly readable board
+      allow read: if true;
+      
+      // All writes managed by server via Admin SDK
+      allow write: if false;
+    }
+  }
+}
