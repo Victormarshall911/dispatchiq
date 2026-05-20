@@ -1,15 +1,14 @@
+import 'dotenv/config';
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { createServer as createViteServer } from 'vite';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function startServer() {
   // Initialize Firebase Admin
@@ -73,8 +72,8 @@ async function startServer() {
       const jobData = {
         ...parsedData,
         status: 'PENDING',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       };
       
       await jobRef.set(jobData);
@@ -83,6 +82,35 @@ async function startServer() {
     } catch (error) {
       console.error('NLP Error:', error);
       res.status(500).json({ error: 'Failed to process request' });
+    }
+  });
+
+  // Structured dispatch creation (no NLP)
+  app.post('/api/create-dispatch', async (req, res) => {
+    const { pickup_location, delivery_destination, item_description, offered_incentive_ngn, estimated_urgency } = req.body;
+
+    if (!pickup_location || !delivery_destination || !item_description || offered_incentive_ngn == null) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+      const jobRef = db.collection('dispatch_jobs').doc();
+      const jobData = {
+        pickup_location,
+        delivery_destination,
+        item_description,
+        offered_incentive_ngn: Number(offered_incentive_ngn),
+        estimated_urgency: estimated_urgency || 'MEDIUM',
+        status: 'PENDING',
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      await jobRef.set(jobData);
+      res.json({ id: jobRef.id, ...jobData });
+    } catch (error) {
+      console.error('Create dispatch error:', error);
+      res.status(500).json({ error: 'Failed to create dispatch' });
     }
   });
 
@@ -110,7 +138,7 @@ async function startServer() {
 
         transaction.update(jobRef, {
           status: 'ASSIGNED',
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         });
       });
 

@@ -44,7 +44,11 @@ interface Job {
 
 export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [inputText, setInputText] = useState('');
+  const [pickup, setPickup] = useState('');
+  const [destination, setDestination] = useState('');
+  const [itemDesc, setItemDesc] = useState('');
+  const [pay, setPay] = useState('');
+  const [urgency, setUrgency] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('MEDIUM');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,23 +68,35 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const canSubmit = pickup.trim() && destination.trim() && itemDesc.trim() && pay.trim();
+
   const handleCreateDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || isSubmitting) return;
+    if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/parse-dispatch', {
+      const response = await fetch('/api/create-dispatch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: inputText }),
+        body: JSON.stringify({
+          pickup_location: pickup.trim(),
+          delivery_destination: destination.trim(),
+          item_description: itemDesc.trim(),
+          offered_incentive_ngn: Number(pay),
+          estimated_urgency: urgency,
+        }),
       });
 
-      if (!response.ok) throw new Error('Failed to parse dispatch');
+      if (!response.ok) throw new Error('Failed to create dispatch');
       
-      setInputText('');
+      setPickup('');
+      setDestination('');
+      setItemDesc('');
+      setPay('');
+      setUrgency('MEDIUM');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -136,34 +152,100 @@ export default function App() {
 
       <main className="flex-1 flex overflow-hidden">
         {/* Create Dispatch Column */}
-        <section className="w-80 border-r border-slate-800 bg-[#0C0C0E]/50 p-6 flex flex-col shrink-0">
-          <div className="mb-6">
+        <section className="w-96 border-r border-slate-800 bg-[#0C0C0E]/50 p-6 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+          <div className="mb-5">
             <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">New Dispatch</h2>
-            <p className="text-xs text-slate-500">Describe your request in natural language.</p>
+            <p className="text-xs text-slate-500">Fill in your delivery details below.</p>
           </div>
           
-          <form onSubmit={handleCreateDispatch} className="flex-1 flex flex-col space-y-4">
-            <div className="relative flex-1">
-              <textarea 
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                disabled={isSubmitting}
-                className="w-full h-full bg-[#16161A] border border-slate-800 rounded-xl p-4 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 resize-none transition-colors"
-                placeholder="I need someone to bring a lab coat from the Engineering Auditorium to the Main Gate hostels for 500 Naira..."
-              ></textarea>
-              <div className="absolute bottom-3 left-3 flex items-center gap-2 text-[10px] text-slate-500 bg-black/40 px-2 py-1 rounded">
-                <Loader2 className={`w-3 h-3 text-emerald-400 ${isSubmitting ? 'animate-spin' : ''}`} />
-                NLP Engine Active
+          <form onSubmit={handleCreateDispatch} className="flex-1 flex flex-col space-y-3">
+            {/* Pickup Location */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pickup Location</label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+                <input
+                  type="text"
+                  value={pickup}
+                  onChange={(e) => setPickup(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full bg-[#16161A] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  placeholder="e.g. Engineering Auditorium"
+                />
+              </div>
+            </div>
+
+            {/* Delivery Destination */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Destination</label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/50" />
+                <input
+                  type="text"
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full bg-[#16161A] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  placeholder="e.g. Main Gate Hostels"
+                />
+              </div>
+            </div>
+
+            {/* Item Description */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">What needs delivering?</label>
+              <div className="relative">
+                <Package className="absolute left-3 top-3 w-4 h-4 text-slate-600" />
+                <textarea
+                  value={itemDesc}
+                  onChange={(e) => setItemDesc(e.target.value)}
+                  disabled={isSubmitting}
+                  rows={2}
+                  className="w-full bg-[#16161A] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 resize-none transition-colors"
+                  placeholder="e.g. Lab coat in a black bag"
+                />
+              </div>
+            </div>
+
+            {/* Pay & Urgency Row */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pay (₦)</label>
+                <input
+                  type="number"
+                  value={pay}
+                  onChange={(e) => setPay(e.target.value)}
+                  disabled={isSubmitting}
+                  min="0"
+                  className="w-full bg-[#16161A] border border-slate-800 rounded-xl px-4 py-3 text-sm text-emerald-400 font-mono placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  placeholder="500"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Urgency</label>
+                <select
+                  value={urgency}
+                  onChange={(e) => setUrgency(e.target.value as 'HIGH' | 'MEDIUM' | 'LOW')}
+                  disabled={isSubmitting}
+                  className="w-full bg-[#16161A] border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="LOW">🟢 Low</option>
+                  <option value="MEDIUM">🟡 Medium</option>
+                  <option value="HIGH">🔴 High</option>
+                </select>
               </div>
             </div>
             
             <button 
               type="submit"
-              disabled={isSubmitting || !inputText.trim()}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 text-black font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg active:scale-[0.98]"
+              disabled={isSubmitting || !canSubmit}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 text-black font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] mt-1"
             >
-              {isSubmitting ? 'Analyzing...' : 'Analyze & Post'}
-              {!isSubmitting && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>}
+              {isSubmitting ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Posting...</>
+              ) : (
+                <>Post Dispatch <Send className="w-4 h-4" /></>
+              )}
             </button>
           </form>
 
