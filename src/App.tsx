@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
-import { Send, Package, MapPin, Clock, AlertCircle, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react';
+import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { Send, Package, MapPin, Clock, AlertCircle, CheckCircle2, ChevronRight, Loader2, Sparkles, LogOut, UserCircle, Zap, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import firebaseConfig from '../firebase-applet-config.json';
+import AuthModal from './AuthModal';
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+const auth = getAuth(firebaseApp);
 
 enum OperationType {
   LIST = 'list',
@@ -40,6 +43,7 @@ interface Job {
   estimated_urgency: 'HIGH' | 'MEDIUM' | 'LOW';
   status: 'PENDING' | 'ASSIGNED';
   createdAt: any;
+  createdBy?: string;
 }
 
 export default function App() {
@@ -52,6 +56,25 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // AI Mode state
+  const [inputMode, setInputMode] = useState<'form' | 'ai'>('form');
+  const [aiText, setAiText] = useState('');
+  const [aiParsing, setAiParsing] = useState(false);
+
+  // Smart Suggest state
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<{ suggested_price: number; suggested_urgency: string; reasoning: string } | null>(null);
+
+  // Auth state
+  const [user, setUser] = useState<User | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showMyJobs, setShowMyJobs] = useState(false);
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (u) => setUser(u));
+    return () => unsubAuth();
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, 'dispatch_jobs'), orderBy('createdAt', 'desc'));
@@ -70,6 +93,71 @@ export default function App() {
 
   const canSubmit = pickup.trim() && destination.trim() && itemDesc.trim() && pay.trim();
 
+  // AI Quick Fill — parse natural language into structured fields
+  const handleAIParse = async () => {
+    if (!aiText.trim() || aiParsing) return;
+    setAiParsing(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/parse-dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: aiText }),
+      });
+
+      if (!response.ok) throw new Error('AI parsing failed');
+      const data = await response.json();
+
+      // Auto-fill the structured fields
+      setPickup(data.pickup_location || '');
+      setDestination(data.delivery_destination || '');
+      setItemDesc(data.item_description || '');
+      setPay(String(data.offered_incentive_ngn || ''));
+      setUrgency(data.estimated_urgency || 'MEDIUM');
+      setAiText('');
+      setInputMode('form'); // Switch to form to review
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setAiParsing(false);
+    }
+  };
+
+  // AI Smart Suggest — recommend price & urgency
+  const handleSmartSuggest = async () => {
+    if (!pickup.trim() || !destination.trim() || !itemDesc.trim() || suggesting) return;
+    setSuggesting(true);
+    setSuggestion(null);
+
+    try {
+      const response = await fetch('/api/ai-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pickup_location: pickup.trim(),
+          delivery_destination: destination.trim(),
+          item_description: itemDesc.trim(),
+        }),
+      });
+
+      if (!response.ok) throw new Error('AI suggestion failed');
+      const data = await response.json();
+      setSuggestion(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    setPay(String(suggestion.suggested_price));
+    setUrgency(suggestion.suggested_urgency as 'HIGH' | 'MEDIUM' | 'LOW');
+    setSuggestion(null);
+  };
+
   const handleCreateDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit || isSubmitting) return;
@@ -87,6 +175,7 @@ export default function App() {
           item_description: itemDesc.trim(),
           offered_incentive_ngn: Number(pay),
           estimated_urgency: urgency,
+          ...(user ? { createdBy: user.uid } : {}),
         }),
       });
 
@@ -97,6 +186,7 @@ export default function App() {
       setItemDesc('');
       setPay('');
       setUrgency('MEDIUM');
+      setSuggestion(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -146,20 +236,85 @@ export default function App() {
             </span>
             <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Network: Online</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700"></div>
+          {user ? (
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-slate-400 truncate max-w-[140px]">{user.email}</span>
+              <button
+                onClick={() => signOut(auth)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[10px] font-bold text-slate-400 hover:text-red-400 hover:border-red-500/30 transition-colors"
+              >
+                <LogOut className="w-3 h-3" /> Sign Out
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAuth(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[10px] font-bold text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
+            >
+              <UserCircle className="w-3.5 h-3.5" /> Sign In
+            </button>
+          )}
         </div>
       </header>
 
       <main className="flex-1 flex overflow-hidden">
         {/* Create Dispatch Column */}
         <section className="w-96 border-r border-slate-800 bg-[#0C0C0E]/50 p-6 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
-          <div className="mb-5">
+          <div className="mb-4">
             <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">New Dispatch</h2>
-            <p className="text-xs text-slate-500">Fill in your delivery details below.</p>
+            <p className="text-xs text-slate-500">Create a delivery request.</p>
           </div>
+
+          {/* AI Mode Toggle */}
+          <div className="flex gap-1 bg-[#0C0C0E] rounded-lg p-1 mb-4">
+            <button
+              type="button"
+              onClick={() => setInputMode('form')}
+              className={`flex-1 py-2 text-[10px] font-bold rounded-md transition-colors flex items-center justify-center gap-1.5 ${inputMode === 'form' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <Zap className="w-3 h-3" /> Quick Form
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode('ai')}
+              className={`flex-1 py-2 text-[10px] font-bold rounded-md transition-colors flex items-center justify-center gap-1.5 ${inputMode === 'ai' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <Sparkles className="w-3 h-3" /> AI Quick Fill
+            </button>
+          </div>
+
+          {/* AI Mode — Natural Language Input */}
+          {inputMode === 'ai' && (
+            <div className="mb-4 space-y-3">
+              <div className="relative">
+                <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-emerald-500/50" />
+                <textarea
+                  value={aiText}
+                  onChange={(e) => setAiText(e.target.value)}
+                  disabled={aiParsing}
+                  rows={4}
+                  className="w-full bg-[#16161A] border border-emerald-500/20 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 resize-none transition-colors"
+                  placeholder="Describe your delivery in plain English... e.g. 'I need someone to bring my charger from Alvan block to CDS hall, I'll pay 300 naira, it's urgent'"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAIParse}
+                disabled={aiParsing || !aiText.trim()}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 text-black font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                {aiParsing ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Gemini is parsing...</>
+                ) : (
+                  <><Sparkles className="w-4 h-4" /> Parse with AI</>
+                )}
+              </button>
+              <p className="text-[10px] text-slate-600 text-center">Gemini will extract pickup, destination, item & price automatically</p>
+            </div>
+          )}
           
+          {/* Structured Form */}
           <form onSubmit={handleCreateDispatch} className="flex-1 flex flex-col space-y-3">
-            {/* Pickup Location */}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pickup Location</label>
               <div className="relative">
@@ -175,7 +330,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Delivery Destination */}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Destination</label>
               <div className="relative">
@@ -191,7 +345,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Item Description */}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">What needs delivering?</label>
               <div className="relative">
@@ -206,6 +359,48 @@ export default function App() {
                 />
               </div>
             </div>
+
+            {/* AI Smart Suggest Button */}
+            {pickup.trim() && destination.trim() && itemDesc.trim() && (
+              <button
+                type="button"
+                onClick={handleSmartSuggest}
+                disabled={suggesting}
+                className="w-full py-2 bg-purple-500/10 border border-purple-500/20 rounded-xl text-[11px] font-bold text-purple-400 hover:bg-purple-500/20 transition-colors flex items-center justify-center gap-2"
+              >
+                {suggesting ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" /> AI is thinking...</>
+                ) : (
+                  <><Sparkles className="w-3 h-3" /> AI Suggest Price &amp; Urgency</>
+                )}
+              </button>
+            )}
+
+            {/* AI Suggestion Chip */}
+            {suggestion && (
+              <div className="p-3 bg-purple-500/5 border border-purple-500/20 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Suggestion</span>
+                  <button type="button" onClick={() => setSuggestion(null)} className="text-[10px] text-slate-500 hover:text-slate-300">✕</button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-mono font-bold text-emerald-400">₦{suggestion.suggested_price.toLocaleString()}</span>
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                    suggestion.suggested_urgency === 'HIGH' ? 'bg-red-500/10 text-red-400' :
+                    suggestion.suggested_urgency === 'MEDIUM' ? 'bg-yellow-500/10 text-yellow-400' :
+                    'bg-blue-500/10 text-blue-400'
+                  }`}>{suggestion.suggested_urgency}</span>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-relaxed">{suggestion.reasoning}</p>
+                <button
+                  type="button"
+                  onClick={applySuggestion}
+                  className="w-full py-1.5 bg-purple-500 hover:bg-purple-400 text-white text-[10px] font-bold rounded-lg transition-colors"
+                >
+                  Apply Suggestion
+                </button>
+              </div>
+            )}
 
             {/* Pay & Urgency Row */}
             <div className="flex gap-3">
@@ -255,19 +450,6 @@ export default function App() {
               {error}
             </div>
           )}
-
-          <div className="mt-8 pt-6 border-t border-slate-800">
-            <h3 className="text-[10px] font-bold text-slate-600 uppercase mb-3 tracking-widest">Recent Events</h3>
-            <div className="space-y-4">
-              <div className="flex gap-3 items-start">
-                <div className="w-1 h-8 bg-emerald-500/20 rounded-full"></div>
-                <div>
-                  <p className="text-xs text-slate-300">System Ready</p>
-                  <p className="text-[10px] text-slate-500">Live for connections</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </section>
 
         {/* Dispatch Board Column */}
@@ -275,13 +457,23 @@ export default function App() {
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-bold text-white">Live Dispatch Board</h2>
             <div className="flex gap-2">
+              {user && (
+                <button
+                  onClick={() => setShowMyJobs(!showMyJobs)}
+                  className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-colors ${
+                    showMyJobs ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  My Dispatches
+                </button>
+              )}
               <span className="px-3 py-1 bg-slate-800 rounded-full text-[10px] font-bold text-slate-400 uppercase">Active Jobs: {jobs.filter(j => j.status === 'PENDING').length}</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-12">
             <AnimatePresence mode="popLayout">
-              {jobs.map((job) => (
+              {jobs.filter(j => !showMyJobs || j.createdBy === user?.uid).map((job) => (
                 <motion.div
                   key={job.id}
                   layout
@@ -358,6 +550,9 @@ export default function App() {
           <span className="text-slate-300">Victor at SyncWave Solutions</span>
         </div>
       </footer>
+
+      {/* Auth Modal */}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
     </div>
   );
 }

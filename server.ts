@@ -114,6 +114,52 @@ async function startServer() {
     }
   });
 
+  // AI Smart Suggest — recommends price & urgency
+  app.post('/api/ai-suggest', async (req, res) => {
+    const { pickup_location, delivery_destination, item_description } = req.body;
+
+    if (!pickup_location || !delivery_destination || !item_description) {
+      return res.status(400).json({ error: 'Pickup, destination, and item description are required' });
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: `You are a pricing assistant for a campus delivery service at a Nigerian university. Based on the following delivery details, suggest a fair price in Naira (NGN) and an urgency level.
+
+Consider:
+- Distance between locations on a typical Nigerian campus
+- Type of item being delivered (fragile, heavy, documents, food, etc.)
+- Typical student budgets (most deliveries range ₦200 - ₦2000)
+
+Pickup: "${pickup_location}"
+Destination: "${delivery_destination}"
+Item: "${item_description}"`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggested_price: { type: Type.NUMBER },
+              suggested_urgency: {
+                type: Type.STRING,
+                enum: ['HIGH', 'MEDIUM', 'LOW']
+              },
+              reasoning: { type: Type.STRING }
+            },
+            required: ['suggested_price', 'suggested_urgency', 'reasoning']
+          }
+        }
+      });
+
+      const suggestion = JSON.parse(response.text);
+      res.json(suggestion);
+    } catch (error) {
+      console.error('AI Suggest Error:', error);
+      res.status(500).json({ error: 'AI suggestion failed' });
+    }
+  });
+
   app.post('/api/accept-job', async (req, res) => {
     const { jobId } = req.body;
     
