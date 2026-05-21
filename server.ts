@@ -5,15 +5,18 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import Groq from 'groq-sdk';
-import { initializeApp, getApps } from 'firebase-admin/app';
+import fetch from 'node-fetch';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { createServer as createViteServer } from 'vite';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
+import serviceAccount from './serviceAccountKey.json' with { type: 'json' };
 
 async function startServer() {
   // Initialize Firebase Admin
   if (!getApps().length) {
     initializeApp({
+      credential: cert(serviceAccount as any),
       projectId: firebaseConfig.projectId,
     });
   }
@@ -24,6 +27,7 @@ async function startServer() {
   // Initialize Groq
   const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
+    fetch: fetch as any,
   });
 
   const app = express();
