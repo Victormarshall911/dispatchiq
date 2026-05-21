@@ -1,4 +1,4 @@
-import { Loader2, CheckCircle2, Truck, XCircle, Package } from 'lucide-react';
+import { Loader2, CheckCircle2, Truck, XCircle, Package, LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
 
@@ -21,9 +21,11 @@ interface Job {
 
 interface JobCardProps {
   job: Job;
+  currentUserId: string | null;
   acceptingId: string | null;
   onAccept: (jobId: string) => void;
   onUpdateStatus: (jobId: string, newStatus: string) => void;
+  onSignIn: () => void;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -43,9 +45,10 @@ const URGENCY_STYLE: Record<string, string> = {
 
 export type { Job };
 
-export default function JobCard({ job, acceptingId, onAccept, onUpdateStatus }: JobCardProps) {
+export default function JobCard({ job, currentUserId, acceptingId, onAccept, onUpdateStatus, onSignIn }: JobCardProps) {
   const status = STATUS_CONFIG[job.status] || STATUS_CONFIG.PENDING;
   const isDone = ['DELIVERED', 'CANCELLED', 'EXPIRED'].includes(job.status);
+  const isOwnJob = currentUserId && job.createdBy === currentUserId;
 
   return (
     <motion.div
@@ -92,20 +95,35 @@ export default function JobCard({ job, acceptingId, onAccept, onUpdateStatus }: 
       <div className="space-y-2">
         {job.status === 'PENDING' && (
           <div className="flex gap-2">
-            <button
-              onClick={() => onAccept(job.id)}
-              disabled={!!acceptingId}
-              className="flex-1 py-2.5 bg-slate-800 hover:bg-emerald-500 hover:text-black rounded-lg text-xs font-bold transition-all border border-slate-700 active:scale-[0.98] disabled:opacity-50"
-            >
-              {acceptingId === job.id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Accept Job'}
-            </button>
-            <button
-              onClick={() => onUpdateStatus(job.id, 'CANCELLED')}
-              className="px-3 py-2.5 bg-slate-800 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-xs font-bold transition-all border border-slate-700"
-              title="Cancel"
-            >
-              <XCircle className="w-4 h-4" />
-            </button>
+            {!currentUserId ? (
+              <button
+                onClick={onSignIn}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-emerald-500/20 hover:text-emerald-400 rounded-lg text-xs font-bold transition-all border border-slate-700 flex items-center justify-center gap-1.5"
+              >
+                <LogIn className="w-3.5 h-3.5" /> Sign in to accept
+              </button>
+            ) : isOwnJob ? (
+              <div className="flex-1 py-2.5 bg-slate-800/50 text-slate-500 rounded-lg text-xs font-bold text-center border border-slate-800 cursor-default">
+                Your dispatch
+              </div>
+            ) : (
+              <button
+                onClick={() => onAccept(job.id)}
+                disabled={!!acceptingId}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-emerald-500 hover:text-black rounded-lg text-xs font-bold transition-all border border-slate-700 active:scale-[0.98] disabled:opacity-50"
+              >
+                {acceptingId === job.id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Accept Job'}
+              </button>
+            )}
+            {isOwnJob && (
+              <button
+                onClick={() => onUpdateStatus(job.id, 'CANCELLED')}
+                className="px-3 py-2.5 bg-slate-800 hover:bg-red-500/20 hover:text-red-400 rounded-lg text-xs font-bold transition-all border border-slate-700"
+                title="Cancel"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            )}
           </div>
         )}
 

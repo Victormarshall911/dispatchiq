@@ -44,17 +44,33 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        h['Authorization'] = `Bearer ${token}`;
+      } catch {}
+    }
+    return h;
+  };
+
   const handleAcceptJob = async (jobId: string) => {
     if (acceptingId) return;
     setAcceptingId(jobId);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch('/api/accept-job', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ jobId }),
       });
       if (res.status === 409) {
         toast.error('Job already taken by another courier!');
+      } else if (res.status === 403) {
+        toast.error('You cannot accept your own dispatch');
+      } else if (res.status === 401) {
+        toast.error('Sign in required to accept jobs');
       } else if (!res.ok) {
         throw new Error('Failed to accept job');
       } else {
@@ -69,9 +85,10 @@ export default function App() {
 
   const handleUpdateStatus = async (jobId: string, newStatus: string) => {
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch('/api/update-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ jobId, newStatus }),
       });
       if (!res.ok) {
@@ -99,7 +116,7 @@ export default function App() {
       <main className="flex-1 flex overflow-hidden">
         {/* Form Column — hidden on mobile when board tab active */}
         <section className={`w-full md:w-96 md:border-r border-slate-800 bg-[#0C0C0E]/50 p-4 md:p-6 flex flex-col md:shrink-0 overflow-y-auto custom-scrollbar ${mobileTab !== 'form' ? 'hidden md:flex' : 'flex'}`}>
-          <DispatchForm user={user} />
+          <DispatchForm user={user} onSignIn={() => setShowAuth(true)} />
         </section>
 
         {/* Board Column — hidden on mobile when form tab active */}
@@ -110,6 +127,7 @@ export default function App() {
             acceptingId={acceptingId}
             onAccept={handleAcceptJob}
             onUpdateStatus={handleUpdateStatus}
+            onSignIn={() => setShowAuth(true)}
           />
         </section>
       </main>

@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { User } from 'firebase/auth';
-import { Send, Package, MapPin, Loader2, Sparkles, Zap, MessageSquare } from 'lucide-react';
+import { Send, Package, MapPin, Loader2, Sparkles, Zap, MessageSquare, LogIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface DispatchFormProps {
   user: User | null;
+  onSignIn: () => void;
 }
 
-export default function DispatchForm({ user }: DispatchFormProps) {
+export default function DispatchForm({ user, onSignIn }: DispatchFormProps) {
   const [pickup, setPickup] = useState('');
   const [destination, setDestination] = useState('');
   const [itemDesc, setItemDesc] = useState('');
@@ -21,13 +22,24 @@ export default function DispatchForm({ user }: DispatchFormProps) {
   const [suggestion, setSuggestion] = useState<{ suggested_price: number; suggested_urgency: string; reasoning: string } | null>(null);
 
   const canSubmit = pickup.trim() && destination.trim() && itemDesc.trim() && pay.trim();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  const getHeaders = async (): Promise<Record<string, string>> => {
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        h['Authorization'] = `Bearer ${token}`;
+      } catch {}
+    }
+    return h;
+  };
 
   const handleAIParse = async () => {
     if (!aiText.trim() || aiParsing) return;
     setAiParsing(true);
     try {
-      const res = await fetch('/api/parse-dispatch', { method: 'POST', headers, body: JSON.stringify({ text: aiText }) });
+      const h = await getHeaders();
+      const res = await fetch('/api/parse-dispatch', { method: 'POST', headers: h, body: JSON.stringify({ text: aiText }) });
       if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(e?.error || 'AI parsing failed'); }
       const data = await res.json();
       setPickup(data.pickup_location || ''); setDestination(data.delivery_destination || '');
@@ -41,7 +53,8 @@ export default function DispatchForm({ user }: DispatchFormProps) {
     if (!pickup.trim() || !destination.trim() || !itemDesc.trim() || suggesting) return;
     setSuggesting(true); setSuggestion(null);
     try {
-      const res = await fetch('/api/ai-suggest', { method: 'POST', headers, body: JSON.stringify({ pickup_location: pickup.trim(), delivery_destination: destination.trim(), item_description: itemDesc.trim() }) });
+      const h = await getHeaders();
+      const res = await fetch('/api/ai-suggest', { method: 'POST', headers: h, body: JSON.stringify({ pickup_location: pickup.trim(), delivery_destination: destination.trim(), item_description: itemDesc.trim() }) });
       if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(e?.error || 'Suggestion failed'); }
       setSuggestion(await res.json());
     } catch (err: any) { toast.error(err.message); } finally { setSuggesting(false); }
@@ -57,7 +70,8 @@ export default function DispatchForm({ user }: DispatchFormProps) {
     e.preventDefault(); if (!canSubmit || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/create-dispatch', { method: 'POST', headers, body: JSON.stringify({ pickup_location: pickup.trim(), delivery_destination: destination.trim(), item_description: itemDesc.trim(), offered_incentive_ngn: Number(pay), estimated_urgency: urgency }) });
+      const h = await getHeaders();
+      const res = await fetch('/api/create-dispatch', { method: 'POST', headers: h, body: JSON.stringify({ pickup_location: pickup.trim(), delivery_destination: destination.trim(), item_description: itemDesc.trim(), offered_incentive_ngn: Number(pay), estimated_urgency: urgency }) });
       if (!res.ok) throw new Error('Failed to create dispatch');
       setPickup(''); setDestination(''); setItemDesc(''); setPay(''); setUrgency('MEDIUM'); setSuggestion(null);
       toast.success('🚀 Dispatch posted to the board!');
@@ -65,7 +79,19 @@ export default function DispatchForm({ user }: DispatchFormProps) {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {/* Auth gate overlay for anonymous users */}
+      {!user && (
+        <div className="absolute inset-0 z-10 bg-[#0C0C0E]/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center gap-4 p-6">
+          <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center">
+            <LogIn className="w-6 h-6 text-emerald-400" />
+          </div>
+          <h3 className="text-base font-bold text-white text-center">Sign in to post dispatches</h3>
+          <p className="text-xs text-slate-500 text-center">You need an account to create delivery requests</p>
+          <button onClick={onSignIn} className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl transition-colors text-sm">Sign In</button>
+        </div>
+      )}
+
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">New Dispatch</h2>
         <p className="text-xs text-slate-500">Create a delivery request.</p>

@@ -37,6 +37,16 @@ async function getOptionalUser(req: express.Request): Promise<string | null> {
   }
 }
 
+/** Require authenticated user. Returns UID or sends 401 and returns null. */
+async function requireUser(req: express.Request, res: express.Response): Promise<string | null> {
+  const uid = await getOptionalUser(req);
+  if (!uid) {
+    res.status(401).json({ error: 'Sign in required to perform this action' });
+    return null;
+  }
+  return uid;
+}
+
 /** Valid status transitions for the job lifecycle state machine */
 const VALID_TRANSITIONS: Record<string, string[]> = {
   'PENDING': ['ASSIGNED', 'CANCELLED'],
@@ -129,13 +139,14 @@ Respond with ONLY valid JSON, no extra text.`
 
       const parsedData = JSON.parse(response.choices[0].message.content || '{}');
 
-      // Optionally save to Firestore
-      const userId = await getOptionalUser(req);
+      // Require auth to save
+      const userId = await requireUser(req, res);
+      if (!userId) return;
       const jobRef = db.collection('dispatch_jobs').doc();
       const jobData = {
         ...parsedData,
         status: 'PENDING',
-        ...(userId ? { createdBy: userId } : {}),
+        createdBy: userId,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       };
@@ -165,7 +176,8 @@ Respond with ONLY valid JSON, no extra text.`
     }
 
     try {
-      const userId = await getOptionalUser(req);
+      const userId = await requireUser(req, res);
+      if (!userId) return;
       const jobRef = db.collection('dispatch_jobs').doc();
       const jobData = {
         pickup_location: sanitizeInput(pickup_location),
@@ -174,7 +186,7 @@ Respond with ONLY valid JSON, no extra text.`
         offered_incentive_ngn: Number(offered_incentive_ngn),
         estimated_urgency: estimated_urgency || 'MEDIUM',
         status: 'PENDING',
-        ...(userId ? { createdBy: userId } : {}),
+        createdBy: userId,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       };
@@ -251,7 +263,8 @@ Item: "${sanitizeInput(item_description)}"`
     const jobRef = db.collection('dispatch_jobs').doc(jobId);
 
     try {
-      const userId = await getOptionalUser(req);
+      const userId = await requireUser(req, res);
+      if (!userId) return;
 
       await db.runTransaction(async (transaction) => {
         const jobDoc = await transaction.get(jobRef);
@@ -263,6 +276,10 @@ Item: "${sanitizeInput(item_description)}"`
         const data = jobDoc.data();
         if (data?.status !== 'PENDING') {
           throw new Error('ALREADY_ASSIGNED');
+        }
+
+        if (data?.createdBy === userId) {
+          throw new Error('OWN_JOB');
         }
 
         transaction.update(jobRef, {
@@ -279,6 +296,8 @@ Item: "${sanitizeInput(item_description)}"`
         return res.status(409).json({ error: 'Job already taken by another courier!' });
       } else if (error.message === 'NOT_FOUND') {
         return res.status(404).json({ error: 'Job not found' });
+      } else if (error.message === 'OWN_JOB') {
+        return res.status(403).json({ error: 'You cannot accept your own dispatch' });
       }
       console.error('Transaction error:', error);
       res.status(500).json({ error: 'Failed to accept job' });

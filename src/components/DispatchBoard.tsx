@@ -11,12 +11,13 @@ interface DispatchBoardProps {
   acceptingId: string | null;
   onAccept: (jobId: string) => void;
   onUpdateStatus: (jobId: string, newStatus: string) => void;
+  onSignIn: () => void;
 }
 
 const STATUS_FILTERS = ['ALL', 'PENDING', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'] as const;
 const URGENCY_FILTERS = ['ALL', 'HIGH', 'MEDIUM', 'LOW'] as const;
 
-export default function DispatchBoard({ jobs, user, acceptingId, onAccept, onUpdateStatus }: DispatchBoardProps) {
+export default function DispatchBoard({ jobs, user, acceptingId, onAccept, onUpdateStatus, onSignIn }: DispatchBoardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [urgencyFilter, setUrgencyFilter] = useState<string>('ALL');
@@ -107,7 +108,7 @@ export default function DispatchBoard({ jobs, user, acceptingId, onAccept, onUpd
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6">
           <AnimatePresence mode="popLayout">
             {filteredJobs.map(job => (
-              <JobCard key={job.id} job={job} acceptingId={acceptingId} onAccept={onAccept} onUpdateStatus={onUpdateStatus} />
+              <JobCard key={job.id} job={job} currentUserId={user?.uid || null} acceptingId={acceptingId} onAccept={onAccept} onUpdateStatus={onUpdateStatus} onSignIn={onSignIn} />
             ))}
           </AnimatePresence>
         </div>
