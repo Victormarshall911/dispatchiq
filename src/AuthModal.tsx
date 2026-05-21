@@ -10,6 +10,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,6 +19,11 @@ export default function AuthModal({ onClose }: AuthModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
+
+    if (mode === 'signup' && password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -30,11 +36,12 @@ export default function AuthModal({ onClose }: AuthModalProps) {
       }
       onClose();
     } catch (err: any) {
+      console.error('Auth error:', err);
       const msg = err.code === 'auth/email-already-in-use' ? 'Email already in use'
         : err.code === 'auth/invalid-credential' ? 'Invalid email or password'
         : err.code === 'auth/weak-password' ? 'Password must be at least 6 characters'
         : err.code === 'auth/invalid-email' ? 'Invalid email address'
-        : 'Authentication failed';
+        : err.message || 'Authentication failed';
       setError(msg);
     } finally {
       setLoading(false);
@@ -61,7 +68,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
         {/* Tabs */}
         <div className="flex gap-1 bg-[#0C0C0E] rounded-lg p-1 mb-6">
           <button
-            onClick={() => { setMode('signin'); setError(null); }}
+            onClick={() => { setMode('signin'); setError(null); setConfirmPassword(''); }}
             className={`flex-1 py-2 text-xs font-bold rounded-md transition-colors ${mode === 'signin' ? 'bg-emerald-500 text-black' : 'text-slate-400 hover:text-slate-200'}`}
           >
             Sign In
@@ -96,6 +103,19 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             />
           </div>
 
+          {mode === 'signup' && (
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password"
+                className="w-full bg-[#0C0C0E] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+              />
+            </div>
+          )}
+
           {error && (
             <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[11px] text-red-400 text-center">
               {error}
@@ -104,7 +124,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
 
           <button
             type="submit"
-            disabled={loading || !email.trim() || !password.trim()}
+            disabled={loading || !email.trim() || !password.trim() || (mode === 'signup' && !confirmPassword.trim())}
             className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 text-black font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

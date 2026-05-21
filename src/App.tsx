@@ -152,12 +152,10 @@ export default function App() {
       <footer className="hidden md:flex h-10 bg-[#0C0C0E] border-t border-slate-800 items-center justify-between px-8 text-[10px] text-slate-500 shrink-0">
         <div className="flex items-center gap-4">
           <span>v2.0.0</span>
-          <span className="w-1 h-1 rounded-full bg-slate-700" />
-          <span className="text-emerald-500/70">Powered by Groq &middot; Llama 3.3</span>
         </div>
         <div className="flex items-center gap-1 font-medium">
           <span>Engineered by</span>
-          <span className="text-slate-300">Victor at SyncWave Solutions</span>
+          <span className="text-slate-300">Victor Marshall</span>
         </div>
       </footer>
 
