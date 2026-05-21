@@ -1,3 +1,4 @@
+import React from 'react';
 import { Loader2, CheckCircle2, Truck, XCircle, Package, LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
@@ -20,6 +21,7 @@ interface Job {
 }
 
 interface JobCardProps {
+  key?: React.Key;
   job: Job;
   currentUserId: string | null;
   acceptingId: string | null;
