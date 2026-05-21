@@ -1,0 +1,16 @@
+{
+  "name": "DispatchIQ",
+  "short_name": "DispatchIQ",
+  "description": "AI-powered campus delivery dispatch board",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090B",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2310b981'/><path d='M55 25V55H75L45 80V50H25L55 25Z' fill='black' stroke='black' stroke-width='3' stroke-linejoin='round'/></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
