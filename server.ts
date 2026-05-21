@@ -4,7 +4,7 @@ dns.setDefaultResultOrder('ipv4first');
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { GoogleGenAI, Type } from '@google/genai';
+import Groq from 'groq-sdk';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { createServer as createViteServer } from 'vite';
@@ -21,14 +21,9 @@ async function startServer() {
     ? getFirestore(firebaseConfig.firestoreDatabaseId)
     : getFirestore();
 
-  // Initialize Gemini
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
-    }
+  // Initialize Groq
+  const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY,
   });
 
   const app = express();
@@ -43,29 +38,30 @@ async function startServer() {
     }
 
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Parse this campus delivery request into a structured format: "${text}"`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              pickup_location: { type: Type.STRING },
-              delivery_destination: { type: Type.STRING },
-              item_description: { type: Type.STRING },
-              offered_incentive_ngn: { type: Type.NUMBER },
-              estimated_urgency: {
-                type: Type.STRING,
-                enum: ['HIGH', 'MEDIUM', 'LOW']
-              }
-            },
-            required: ['pickup_location', 'delivery_destination', 'item_description', 'offered_incentive_ngn', 'estimated_urgency']
+      const response = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a campus delivery request parser. Parse the user's delivery request into a JSON object with these exact fields:
+- pickup_location (string): where to pick up the item
+- delivery_destination (string): where to deliver it
+- item_description (string): what the item is
+- offered_incentive_ngn (number): price offered in Naira (estimate if not specified, range 200-2000)
+- estimated_urgency (string): one of "HIGH", "MEDIUM", or "LOW"
+
+Respond with ONLY valid JSON, no extra text.`
+          },
+          {
+            role: 'user',
+            content: `Parse this campus delivery request: "${text}"`
           }
-        }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
       });
 
-      const parsedData = JSON.parse(response.text);
+      const parsedData = JSON.parse(response.choices[0].message.content || '{}');
       
       // Save to Firestore
       const jobRef = db.collection('dispatch_jobs').doc();
@@ -79,8 +75,14 @@ async function startServer() {
       await jobRef.set(jobData);
       
       res.json({ id: jobRef.id, ...jobData });
-    } catch (error) {
+    } catch (error: any) {
       console.error('NLP Error:', error);
+      if (error.status === 429) {
+        return res.status(429).json({ error: 'AI rate limit reached. Please wait a moment and try again.' });
+      }
+      if (error.status === 503) {
+        return res.status(503).json({ error: 'AI model is busy. Please try again in a few seconds.' });
+      }
       res.status(500).json({ error: 'Failed to process request' });
     }
   });
@@ -123,39 +125,44 @@ async function startServer() {
     }
 
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: `You are a pricing assistant for a campus delivery service at a Nigerian university. Based on the following delivery details, suggest a fair price in Naira (NGN) and an urgency level.
+      const response = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a pricing assistant for a campus delivery service at a Nigerian university. Suggest a fair price in Naira (NGN) and an urgency level.
 
 Consider:
 - Distance between locations on a typical Nigerian campus
 - Type of item being delivered (fragile, heavy, documents, food, etc.)
 - Typical student budgets (most deliveries range ₦200 - ₦2000)
 
-Pickup: "${pickup_location}"
+Respond with ONLY a JSON object with these exact fields:
+- suggested_price (number): fair price in Naira
+- suggested_urgency (string): one of "HIGH", "MEDIUM", or "LOW"
+- reasoning (string): brief explanation of your suggestion`
+          },
+          {
+            role: 'user',
+            content: `Pickup: "${pickup_location}"
 Destination: "${delivery_destination}"
-Item: "${item_description}"`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              suggested_price: { type: Type.NUMBER },
-              suggested_urgency: {
-                type: Type.STRING,
-                enum: ['HIGH', 'MEDIUM', 'LOW']
-              },
-              reasoning: { type: Type.STRING }
-            },
-            required: ['suggested_price', 'suggested_urgency', 'reasoning']
+Item: "${item_description}"`
           }
-        }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
       });
 
-      const suggestion = JSON.parse(response.text);
+      const suggestion = JSON.parse(response.choices[0].message.content || '{}');
       res.json(suggestion);
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI Suggest Error:', error);
+      if (error.status === 429) {
+        return res.status(429).json({ error: 'AI rate limit reached. Please wait a moment and try again.' });
+      }
+      if (error.status === 503) {
+        return res.status(503).json({ error: 'AI model is busy. Please try again in a few seconds.' });
+      }
       res.status(500).json({ error: 'AI suggestion failed' });
     }
   });

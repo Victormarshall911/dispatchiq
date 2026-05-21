@@ -106,7 +106,10 @@ export default function App() {
         body: JSON.stringify({ text: aiText }),
       });
 
-      if (!response.ok) throw new Error('AI parsing failed');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || 'AI parsing failed');
+      }
       const data = await response.json();
 
       // Auto-fill the structured fields
@@ -141,7 +144,10 @@ export default function App() {
         }),
       });
 
-      if (!response.ok) throw new Error('AI suggestion failed');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || 'AI suggestion failed');
+      }
       const data = await response.json();
       setSuggestion(data);
     } catch (err: any) {
