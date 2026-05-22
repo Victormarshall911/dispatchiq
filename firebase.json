@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "dispatch-iq",
     "public": "dist",
     "ignore": [
       "firebase.json",
